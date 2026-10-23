@@ -373,6 +373,32 @@ html { -webkit-text-size-adjust: 100%; }
 .acoes-estatal button { flex:1; min-width:85px; }
 @media(max-width:600px) { .form-sistema { grid-template-columns:1fr; } .form-sistema button { grid-column:auto; width:100%; } }
 
+
+/* Planalto Brasil 1.0 — direção visual premium de estratégia e painel fiscal. */
+:root { --fundo:#080f1b; --fundo-2:#101b2b; --painel:#111f31; --painel-alto:#17283e; --linha:#283c54; --linha-forte:#47617d; --destaque:#e4bc62; --verde:#49c18a; --azul:#6e9ff4; --raio:15px; }
+body { background: radial-gradient(900px 520px at 4% -14%,rgba(47,87,143,.27),transparent 65%), radial-gradient(700px 460px at 104% 2%,rgba(33,104,76,.18),transparent 60%), var(--fundo); }
+.topo { padding:14px clamp(14px,3vw,34px); border-bottom-color:rgba(228,188,98,.22); }
+.topo strong { letter-spacing:.12em; }
+.topo strong::before { border-radius:9px; background:linear-gradient(145deg,#f1d17b,#ad7c27); }
+main { max-width:1360px; padding:clamp(14px,2.4vw,32px); }
+.painel { border-color:rgba(111,143,178,.2); box-shadow:0 14px 36px rgba(0,0,0,.2); }
+.painel:hover { border-color:rgba(228,188,98,.38); }
+.kpi { border-radius:12px; background:linear-gradient(160deg,rgba(255,255,255,.045),rgba(255,255,255,.012)); }
+.kpi.destaque { border-color:rgba(228,188,98,.38); background:linear-gradient(145deg,rgba(228,188,98,.12),rgba(228,188,98,.025)); }
+button,.botao { border-radius:9px; transition:transform .16s ease,border-color .16s ease,background .16s ease; }
+button:hover:not(:disabled) { transform:translateY(-1px); }
+button.primario,.primario { background:linear-gradient(135deg,#d9b45c,#b98b34); color:#111827; border-color:#e7c979; font-weight:800; }
+.areas { gap:8px; }
+.areas .chip { border-radius:999px; padding:7px 12px; background:rgba(255,255,255,.035); }
+.fiscal-resumo { border-color:rgba(228,188,98,.28); background:linear-gradient(150deg,rgba(228,188,98,.055),rgba(17,31,49,.98) 45%); }
+.fiscal-kpis { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; }
+.fiscal-item { min-width:0; border:1px solid var(--linha); border-radius:11px; padding:13px; background:rgba(4,10,18,.32); }
+.fiscal-item span { display:block; color:var(--suave); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+.fiscal-item b { display:block; margin-top:7px; font-size:clamp(15px,1.7vw,21px); overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.fiscal-positivo { color:var(--verde); } .fiscal-negativo { color:#f08b83; }
+@media(max-width:900px) { .fiscal-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .fiscal-item:last-child { grid-column:1/-1; } }
+@media(max-width:520px) { .fiscal-kpis { grid-template-columns:1fr 1fr; gap:7px; } .fiscal-item { padding:10px; } .fiscal-item span { font-size:10px; } }
+
   </style>
 </head>
 <body>
@@ -2648,6 +2674,34 @@ const ESTATAIS_INICIAIS = [
   { id: 'infra', nome: 'Infraestrutura Federal', caixa: 42, eficiencia: 49, reputacao: 52 },
 ];
 
+// Painel fiscal fictício em bilhões de reais do jogo; não representa orçamento oficial.
+function criarPainelFiscal() {
+  return {
+    receita: 185, despesa: 190, juros: 48, resultadoPrimario: -5,
+    resultadoNominal: -53, caixa: 32, historico: [],
+  };
+}
+
+function atualizarPainelFiscal(state) {
+  const f = state.fiscal ?? (state.fiscal = criarPainelFiscal());
+  const i = state.indicadores;
+  const total = state.orcamento?.pastas?.reduce((soma, p) => soma + p.dotacao, 0) ?? 1000;
+  const receitaBase = 185 + (i.pib - 2) * 2.2 - (i.desemprego - 7.5) * 1.1;
+  const despesaBase = 190 + (total - 1000) * 0.08;
+  f.receita = Math.max(0, Math.round(receitaBase * 10) / 10);
+  f.despesa = Math.max(0, Math.round(despesaBase * 10) / 10);
+  f.juros = Math.max(0, Math.round((42 + (i.divida - 60) * 0.35 + (i.inflacao - 4.5) * 1.4) * 10) / 10);
+  f.resultadoPrimario = Math.round((f.receita - f.despesa) * 10) / 10;
+  f.resultadoNominal = Math.round((f.resultadoPrimario - f.juros) * 10) / 10;
+  f.caixa = Math.round(clamp(f.caixa + f.resultadoNominal * 0.025, 0, 100) * 10) / 10;
+  f.historico = [...(f.historico ?? []), {
+    mes: state.mes, receita: f.receita, despesa: f.despesa, juros: f.juros,
+    primario: f.resultadoPrimario, nominal: f.resultadoNominal, caixa: f.caixa,
+  }].slice(-48);
+  // O resultado fiscal afeta a dívida gradualmente, sem converter 1 unidade em 1 ponto de PIB.
+  i.divida = clamp(i.divida - f.resultadoNominal * 0.006, ...CLAMP.divida);
+}
+
 function criarGoverno({ seed, deputados, senadores, partidoDoPresidente, aliancas = {}, dificuldade = 'normal' }) {
   if (!Array.isArray(deputados) || deputados.length !== CADEIRAS) {
     throw new Error(`A Câmara precisa de ${CADEIRAS} deputados`);
@@ -2665,6 +2719,7 @@ function criarGoverno({ seed, deputados, senadores, partidoDoPresidente, alianca
     senado: montarCasa(senadores, seed + 7919, partidoDoPresidente, ufsComAliado(aliancas)),
     medidas: [], eventos: [], historicoAprovacao: [],
     gruposSociais: GRUPOS_SOCIAIS_INICIAIS.map((g) => ({ ...g })),
+    fiscal: criarPainelFiscal(),
     ministros: MINISTERIOS.map((nome, idx) => ({ id: `min-${idx}`, pasta: nome, nome: null, confianca: 50 })),
     governadores: UFS_GOVERNO.map((uf) => ({ uf, apoio: 0, negociacoes: 0 })),
     estatais: ESTATAIS_INICIAIS.map((e) => ({ ...e })),
@@ -2683,8 +2738,8 @@ function escalar(efeitos, k) {
 function migrarGoverno(g, deputados, senadores) {
   const atual = g.versao === 2 && Array.isArray(g.senado) && g.camara?.[0]?.nome;
   if (atual) {
-    if (g.orcamento && Array.isArray(g.gruposSociais) && Array.isArray(g.ministros) && Array.isArray(g.governadores) && Array.isArray(g.estatais)) return g;
-    return { ...g, orcamento: g.orcamento ?? criarOrcamento(), gruposSociais: g.gruposSociais ?? GRUPOS_SOCIAIS_INICIAIS.map((x) => ({ ...x })), ministros: g.ministros ?? MINISTERIOS.map((nome, idx) => ({ id: `min-${idx}`, pasta: nome, nome: null, confianca: 50 })), governadores: g.governadores ?? UFS_GOVERNO.map((uf) => ({ uf, apoio: 0, negociacoes: 0 })), estatais: g.estatais ?? ESTATAIS_INICIAIS.map((e) => ({ ...e })) };
+    if (g.orcamento && Array.isArray(g.gruposSociais) && Array.isArray(g.ministros) && Array.isArray(g.governadores) && Array.isArray(g.estatais) && g.fiscal) return g;
+    return { ...g, orcamento: g.orcamento ?? criarOrcamento(), gruposSociais: g.gruposSociais ?? GRUPOS_SOCIAIS_INICIAIS.map((x) => ({ ...x })), ministros: g.ministros ?? MINISTERIOS.map((nome, idx) => ({ id: `min-${idx}`, pasta: nome, nome: null, confianca: 50 })), governadores: g.governadores ?? UFS_GOVERNO.map((uf) => ({ uf, apoio: 0, negociacoes: 0 })), estatais: g.estatais ?? ESTATAIS_INICIAIS.map((e) => ({ ...e })), fiscal: g.fiscal ?? criarPainelFiscal() };
   }
   const migrado = {
     ...g,
@@ -2705,6 +2760,7 @@ function migrarGoverno(g, deputados, senadores) {
   migrado.governadores = g.governadores ?? UFS_GOVERNO.map((uf) => ({ uf, apoio: 0, negociacoes: 0 }));
   migrado.estatais = g.estatais ?? ESTATAIS_INICIAIS.map((e) => ({ ...e }));
   migrado.orcamento = g.orcamento ?? criarOrcamento();
+  migrado.fiscal = g.fiscal ?? criarPainelFiscal();
   migrado.eventos = [...migrado.eventos, { mes: migrado.mes, texto: 'Parlamentares atualizados para a versão atual do jogo' }];
   return migrado;
 }
@@ -2902,6 +2958,7 @@ function encerrarMes(state) {
   // A opinião segmentada influencia levemente a aprovação geral, sem substituir os indicadores econômicos.
   const mediaGrupos = s.gruposSociais.reduce((total, grupo) => total + grupo.aprovacao, 0) / s.gruposSociais.length;
   i.aprovacao = Math.round(clamp(i.aprovacao * 0.96 + mediaGrupos * 0.04, ...CLAMP.aprovacao) * 10) / 10;
+  atualizarPainelFiscal(s);
   s.historicoAprovacao = [...(s.historicoAprovacao ?? []), Math.round(i.aprovacao * 10) / 10];
   s.eventos.push({ mes: s.mes, texto: `Fim do mês ${s.mes}: aprovação ${i.aprovacao.toFixed(0)}%` });
   s.mes += 1;
@@ -3032,7 +3089,7 @@ function situacaoDaMedida(m) {
   return 'Situação indefinida';
 }
 
-return { MESES_GOVERNO, CADEIRAS, SENADORES_TOTAL, QUORUM, PARAMS_GOVERNO, BONUS_PALANQUE, MINISTERIOS, UFS_GOVERNO, ESTATAIS_INICIAIS, criarGoverno, migrarGoverno, classificarMedida, protocolarMedida, encerrarMes, responderCrise, nomearMinistro, negociarGovernador, gerirEstatal, bancadas, remanejarOrcamento, cortarOrcamento, ampliarOrcamento, situacaoDaMedida };
+return { MESES_GOVERNO, CADEIRAS, SENADORES_TOTAL, QUORUM, PARAMS_GOVERNO, BONUS_PALANQUE, MINISTERIOS, UFS_GOVERNO, ESTATAIS_INICIAIS, criarPainelFiscal, criarGoverno, migrarGoverno, classificarMedida, protocolarMedida, encerrarMes, responderCrise, nomearMinistro, negociarGovernador, gerirEstatal, bancadas, remanejarOrcamento, cortarOrcamento, ampliarOrcamento, situacaoDaMedida };
 })();
 
 // ---- src/motor/sucessao.js ----
@@ -6911,7 +6968,7 @@ let tela = null; // null | 'ranking' | 'conquistas' | 'novidades' (telas fora de
 const CHAVE_RANKING = 'planalto.ranking.v1';
 const CHAVE_HISTORICO = 'planalto.historico.v1';
 let rankingFiltro = 'todas';
-const VERSAO = 'beta 0.30';
+const VERSAO = '1.0.0';
 let partida = carregar();
 let ufSel = 'SP';
 let resultadoSalaGuerra = null; // resultados temporários da sala de guerra; recalculados após cada ação
@@ -7760,6 +7817,23 @@ function tendencia(atual, anterior) {
     ? `<span class="tend alta">▲ ${d.toFixed(1)} pts</span>`
     : `<span class="tend queda">▼ ${Math.abs(d).toFixed(1)} pts</span>`;
 }
+function renderResumoFiscal(g) {
+  const f = g.fiscal ?? G.criarPainelFiscal();
+  const sinal = (n) => `${n > 0 ? '+' : ''}${Number(n).toFixed(1)} bi`;
+  const resultado = f.resultadoNominal ?? (f.resultadoPrimario - f.juros);
+  return `<section class="painel fiscal-resumo" id="sec-fiscal">
+    <div class="cabecalho-painel"><h2>Contas públicas</h2><span class="pill">valores fictícios do jogo</span></div>
+    <div class="fiscal-kpis">
+      <div class="fiscal-item"><span>Receita mensal</span><b>R$ ${Number(f.receita).toFixed(1)} bi</b></div>
+      <div class="fiscal-item"><span>Despesa mensal</span><b>R$ ${Number(f.despesa).toFixed(1)} bi</b></div>
+      <div class="fiscal-item"><span>Resultado primário</span><b class="${f.resultadoPrimario >= 0 ? 'fiscal-positivo' : 'fiscal-negativo'}">${sinal(f.resultadoPrimario)}</b></div>
+      <div class="fiscal-item"><span>Juros estimados</span><b>R$ ${Number(f.juros).toFixed(1)} bi</b></div>
+      <div class="fiscal-item"><span>Resultado nominal</span><b class="${resultado >= 0 ? 'fiscal-positivo' : 'fiscal-negativo'}">${sinal(resultado)}</b></div>
+    </div>
+    <p class="aviso">Estimativa simplificada da simulação: economia, dívida e orçamento influenciam os números a cada mês. Não são dados oficiais nem projeções econômicas reais.</p>
+  </section>`;
+}
+
 function painelPresidencial(g, fim) {
   const i = g.indicadores;
   const hist = g.historicoAprovacao ?? [];
@@ -7768,7 +7842,7 @@ function painelPresidencial(g, fim) {
   const cal = calendarioDoJogo(mesAtual);
   const restantes = Math.max(0, G.MESES_GOVERNO - g.mes + 1);
   const areas = [
-    ['sec-crises', 'Crises'], ['sec-orcamento', 'Orçamento'], ['sec-medidas', 'Medidas'],
+    ['sec-fiscal', 'Painel fiscal'], ['sec-crises', 'Crises'], ['sec-orcamento', 'Orçamento'], ['sec-medidas', 'Medidas'],
     ['sec-congresso', 'Congresso'], ['sec-grupos', 'Grupos sociais'], ['sec-ministerios', 'Ministérios'], ['sec-federacao', 'Governadores'], ['sec-estatais', 'Estatais'], ['sec-historico', 'Histórico'], ['sec-grafico', 'Aprovação'],
   ].map(([id, rot]) => `<a class="chip" href="#${id}">${rot}</a>`).join('');
   const noticias = [...g.eventos].reverse().slice(0, 6)
@@ -7797,6 +7871,7 @@ function painelPresidencial(g, fim) {
         <div class="kpi"><span>Desemprego</span><b>${i.desemprego.toFixed(1)}%</b><small class="tend neutra">simulado</small></div>
         <div class="kpi"><span>Dívida (% PIB)</span><b>${i.divida.toFixed(0)}</b><small class="tend neutra">simulado</small></div>
       </div>
+      ${renderResumoFiscal(g)}
       <div class="duas-colunas">
         <div id="sec-grafico">${graficoAprovacao(g)}</div>
         <div><h2>Próximas decisões</h2><ul class="lista">${decisoes}</ul></div>
