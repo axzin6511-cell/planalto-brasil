@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PLANALTO: simulador da Presidência (ficção)</title>
+  <title>Planalto Brasil 1.1 — Simulador presidencial</title>
   <style>
 /* Planalto Brasil — sistema visual (redesenho 0.16).
    Paleta própria: azul-noite institucional, verde-bandeira suave e ouro de destaque.
@@ -399,13 +399,39 @@ button.primario,.primario { background:linear-gradient(135deg,#d9b45c,#b98b34); 
 @media(max-width:900px) { .fiscal-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .fiscal-item:last-child { grid-column:1/-1; } }
 @media(max-width:520px) { .fiscal-kpis { grid-template-columns:1fr 1fr; gap:7px; } .fiscal-item { padding:10px; } .fiscal-item span { font-size:10px; } }
 
+
+/* Planalto Brasil 1.0.1 — governabilidade */
+.governabilidade-resumo { border:1px solid rgba(228,188,98,.2); border-radius:12px; padding:14px 16px; margin:0 0 14px; background:rgba(4,10,18,.28); }
+.governabilidade-titulo { display:flex; align-items:center; justify-content:space-between; gap:12px; color:var(--suave); font-size:12px; text-transform:uppercase; letter-spacing:.055em; }
+.governabilidade-titulo b { color:var(--ouro,#e4bc62); font-size:20px; letter-spacing:0; font-variant-numeric:tabular-nums; }
+.governabilidade-trilho { height:7px; background:rgba(255,255,255,.09); border-radius:99px; overflow:hidden; margin:10px 0 8px; }
+.governabilidade-trilho span { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,#b45f57,#d8b45f 55%,#6bc69a); transition:width .25s ease; }
+.governabilidade-meta { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; font-size:12px; }
+.governabilidade-meta b { color:var(--texto,#f5f3ed); }
+.governabilidade-meta span { color:var(--suave); }
+
+
+/* Planalto Brasil 1.1 — metas estratégicas do mandato */
+.metas-governo { margin-top: 16px; }
+.metas-lista { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-top:12px; }
+.meta-item { border:1px solid var(--borda,rgba(255,255,255,.12)); background:rgba(255,255,255,.025); border-radius:12px; padding:13px; min-width:0; }
+.meta-item.meta-ok { border-color:rgba(91,190,137,.45); background:rgba(91,190,137,.06); }
+.meta-topo { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+.meta-topo div { display:flex; flex-direction:column; gap:4px; }
+.meta-topo b { font-size:13px; }
+.meta-topo small,.meta-status { color:var(--suave,#9eacb8); font-size:11px; }
+.meta-topo strong { font-size:18px; color:var(--ouro,#e4bc62); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.meta-trilho { height:6px; border-radius:99px; background:rgba(255,255,255,.1); overflow:hidden; margin:12px 0 7px; }
+.meta-trilho span { display:block; height:100%; background:linear-gradient(90deg,#b88e42,#dfc77b); border-radius:inherit; }
+.meta-ok .meta-trilho span { background:#5bbe89; }
+
   </style>
 </head>
 <body>
   <header class="topo">
     <strong>PLANALTO</strong>
     <span class="aviso">Ficção satírica. Números e falas são simulação, não dados oficiais.</span>
-    <span class="aviso">versão beta 0.30</span>
+    <span class="aviso">versão 1.1.0</span>
     <span style="margin-left:auto"></span>
     <button data-acao="ver-ranking">Ranking</button>
     <button data-acao="ver-conquistas">Conquistas</button>
@@ -2804,14 +2830,37 @@ function classificarMedida(texto) {
   return { instrumento, custo, temFonte, gasto, efeitos, texto: original };
 }
 
-// Votação individual numa casa. Probabilidade depende da afinidade (fictícia)
-// e da aprovação popular.
+// Índice de governabilidade fictício: combinação da afinidade parlamentar e apoio estadual.
+// Não representa previsão política real; é um indicador interno da simulação.
+function calcularGovernabilidade(state) {
+  const casas = [state.camara ?? [], state.senado ?? []].filter((c) => c.length);
+  const parlamentares = casas.flat();
+  const mediaAfinidade = parlamentares.length
+    ? parlamentares.reduce((soma, p) => soma + (Number(p.afinidade) || 0), 0) / parlamentares.length
+    : 0;
+  const estados = state.governadores ?? [];
+  const apoioEstados = estados.length
+    ? estados.reduce((soma, g) => soma + clamp(Number(g.apoio) || 0, -100, 100), 0) / estados.length / 100
+    : 0;
+  const indice = clamp(50 + mediaAfinidade * 35 + apoioEstados * 15, 0, 100);
+  return {
+    indice: Math.round(indice * 10) / 10,
+    mediaAfinidade: Math.round(mediaAfinidade * 100) / 100,
+    apoioEstados: Math.round(apoioEstados * 1000) / 10,
+    faixa: indice >= 65 ? 'Base sólida' : indice >= 52 ? 'Articulação possível' : indice >= 40 ? 'Base instável' : 'Crise de governabilidade',
+  };
+}
+
+// Votação individual numa casa. Probabilidade depende da afinidade fictícia,
+// aprovação popular e governabilidade agregada.
 function votarCasa(state, casa, medida) {
   const bonusPopular = (state.indicadores.aprovacao - 50) / 200;
+  const governabilidade = calcularGovernabilidade(state);
+  const bonusGovernabilidade = (governabilidade.indice - 50) / 500;
   const bonusMedida = (medida.efeitos.pib - medida.efeitos.inflacao) * 0.1;
   const votos = { sim: 0, nao: 0, nominais: [] };
   for (const parlamentar of state[casa]) {
-    const p = clamp(0.5 + parlamentar.afinidade * 0.4 + bonusPopular + bonusMedida, 0.02, 0.98);
+    const p = clamp(0.5 + parlamentar.afinidade * 0.4 + bonusPopular + bonusGovernabilidade + bonusMedida, 0.02, 0.98);
     const voto = sortear(state) < p ? 'sim' : 'nao';
     votos[voto] += 1;
     votos.nominais.push({
@@ -3089,7 +3138,7 @@ function situacaoDaMedida(m) {
   return 'Situação indefinida';
 }
 
-return { MESES_GOVERNO, CADEIRAS, SENADORES_TOTAL, QUORUM, PARAMS_GOVERNO, BONUS_PALANQUE, MINISTERIOS, UFS_GOVERNO, ESTATAIS_INICIAIS, criarPainelFiscal, criarGoverno, migrarGoverno, classificarMedida, protocolarMedida, encerrarMes, responderCrise, nomearMinistro, negociarGovernador, gerirEstatal, bancadas, remanejarOrcamento, cortarOrcamento, ampliarOrcamento, situacaoDaMedida };
+return { MESES_GOVERNO, CADEIRAS, SENADORES_TOTAL, QUORUM, PARAMS_GOVERNO, BONUS_PALANQUE, MINISTERIOS, UFS_GOVERNO, ESTATAIS_INICIAIS, criarPainelFiscal, criarGoverno, migrarGoverno, classificarMedida, calcularGovernabilidade, protocolarMedida, encerrarMes, responderCrise, nomearMinistro, negociarGovernador, gerirEstatal, bancadas, remanejarOrcamento, cortarOrcamento, ampliarOrcamento, situacaoDaMedida };
 })();
 
 // ---- src/motor/sucessao.js ----
@@ -7821,8 +7870,14 @@ function renderResumoFiscal(g) {
   const f = g.fiscal ?? G.criarPainelFiscal();
   const sinal = (n) => `${n > 0 ? '+' : ''}${Number(n).toFixed(1)} bi`;
   const resultado = f.resultadoNominal ?? (f.resultadoPrimario - f.juros);
+  const gov = G.calcularGovernabilidade(g);
   return `<section class="painel fiscal-resumo" id="sec-fiscal">
-    <div class="cabecalho-painel"><h2>Contas públicas</h2><span class="pill">valores fictícios do jogo</span></div>
+    <div class="cabecalho-painel"><h2>Contas públicas e governabilidade</h2><span class="pill">simulação fictícia</span></div>
+    <div class="governabilidade-resumo">
+      <div class="governabilidade-titulo"><span>Índice de governabilidade</span><b>${gov.indice.toFixed(1)}/100</b></div>
+      <div class="governabilidade-trilho"><span style="width:${gov.indice}%"></span></div>
+      <div class="governabilidade-meta"><b>${esc(gov.faixa)}</b><span>Afinidade parlamentar e apoio estadual</span></div>
+    </div>
     <div class="fiscal-kpis">
       <div class="fiscal-item"><span>Receita mensal</span><b>R$ ${Number(f.receita).toFixed(1)} bi</b></div>
       <div class="fiscal-item"><span>Despesa mensal</span><b>R$ ${Number(f.despesa).toFixed(1)} bi</b></div>
@@ -7834,6 +7889,27 @@ function renderResumoFiscal(g) {
   </section>`;
 }
 
+function renderMetasGoverno(g) {
+  const i = g.indicadores;
+  const metas = [
+    { nome: 'Crescimento econômico', atual: i.pib, alvo: 3, bom: 'acima', unidade: '%', desc: 'PIB simulado ≥ 3%', progresso: Math.max(0, Math.min(100, (i.pib / 3) * 100)), ok: i.pib >= 3 },
+    { nome: 'Controle da inflação', atual: i.inflacao, alvo: 4, bom: 'abaixo', unidade: '%', desc: 'Inflação simulada ≤ 4%', progresso: Math.max(0, Math.min(100, (4 / Math.max(0.1, i.inflacao)) * 100)), ok: i.inflacao <= 4 },
+    { nome: 'Emprego', atual: i.desemprego, alvo: 6, bom: 'abaixo', unidade: '%', desc: 'Desemprego simulado ≤ 6%', progresso: Math.max(0, Math.min(100, (6 / Math.max(0.1, i.desemprego)) * 100)), ok: i.desemprego <= 6 },
+    { nome: 'Apoio popular', atual: i.aprovacao, alvo: 60, bom: 'acima', unidade: '%', desc: 'Aprovação simulada ≥ 60%', progresso: Math.max(0, Math.min(100, (i.aprovacao / 60) * 100)), ok: i.aprovacao >= 60 },
+    { nome: 'Sustentabilidade da dívida', atual: i.divida, alvo: 65, bom: 'abaixo', unidade: '% do PIB', desc: 'Dívida simulada ≤ 65% do PIB', progresso: Math.max(0, Math.min(100, (65 / Math.max(1, i.divida)) * 100)), ok: i.divida <= 65 },
+  ];
+  const cumpridas = metas.filter((m) => m.ok).length;
+  return `<section class="painel metas-governo" id="sec-metas">
+    <div class="cabecalho-painel"><h2>Metas estratégicas do mandato</h2><span class="pill">${cumpridas} de ${metas.length} atingidas</span></div>
+    <p class="aviso">Metas de referência do jogo, não compromissos oficiais nem previsões. O progresso é recalculado com os indicadores atuais.</p>
+    <div class="metas-lista">${metas.map((m) => `<div class="meta-item ${m.ok ? 'meta-ok' : ''}">
+      <div class="meta-topo"><div><b>${m.nome}</b><small>${m.desc}</small></div><strong>${Number(m.atual).toFixed(1)}${m.unidade === '% do PIB' ? '%' : '%'}</strong></div>
+      <div class="meta-trilho"><span style="width:${m.progresso}%"></span></div>
+      <small class="meta-status">${m.ok ? 'Meta atingida' : `Meta: ${m.bom === 'acima' ? '≥' : '≤'} ${m.alvo}${m.unidade}`}</small>
+    </div>`).join('')}</div>
+  </section>`;
+}
+
 function painelPresidencial(g, fim) {
   const i = g.indicadores;
   const hist = g.historicoAprovacao ?? [];
@@ -7842,7 +7918,7 @@ function painelPresidencial(g, fim) {
   const cal = calendarioDoJogo(mesAtual);
   const restantes = Math.max(0, G.MESES_GOVERNO - g.mes + 1);
   const areas = [
-    ['sec-fiscal', 'Painel fiscal'], ['sec-crises', 'Crises'], ['sec-orcamento', 'Orçamento'], ['sec-medidas', 'Medidas'],
+    ['sec-fiscal', 'Painel fiscal'], ['sec-metas', 'Metas do mandato'], ['sec-crises', 'Crises'], ['sec-orcamento', 'Orçamento'], ['sec-medidas', 'Medidas'],
     ['sec-congresso', 'Congresso'], ['sec-grupos', 'Grupos sociais'], ['sec-ministerios', 'Ministérios'], ['sec-federacao', 'Governadores'], ['sec-estatais', 'Estatais'], ['sec-historico', 'Histórico'], ['sec-grafico', 'Aprovação'],
   ].map(([id, rot]) => `<a class="chip" href="#${id}">${rot}</a>`).join('');
   const noticias = [...g.eventos].reverse().slice(0, 6)
@@ -7872,6 +7948,7 @@ function painelPresidencial(g, fim) {
         <div class="kpi"><span>Dívida (% PIB)</span><b>${i.divida.toFixed(0)}</b><small class="tend neutra">simulado</small></div>
       </div>
       ${renderResumoFiscal(g)}
+      ${renderMetasGoverno(g)}
       <div class="duas-colunas">
         <div id="sec-grafico">${graficoAprovacao(g)}</div>
         <div><h2>Próximas decisões</h2><ul class="lista">${decisoes}</ul></div>
